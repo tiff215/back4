@@ -3,5 +3,3 @@ uvicorn==0.24.0
 requests==2.31.0
 web3==6.11.0
 
-
-

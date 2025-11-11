@@ -11,10 +11,10 @@ class ACR122UReader:
         self.reader = None
         self.connection = None
         self.monitoring = False
-       self.current_card_uid = None
+        self.current_card_uid = None
         self.card_removed_callback = None
         
-         Base de datos de usuarios
+        # Base de datos de usuarios
         self.registered_users = {
             "04A1B2C3D4E5": "Ana Lopez",
             "04F6G7H8I9J0": "Carlos Ruiz", 
@@ -36,7 +36,7 @@ class ACR122UReader:
     def initialize_reader(self) -> bool:
         """Detecta el lector y selecciona el primero disponible."""
         try:
-           available_readers = readers()
+            available_readers = readers()
             if not available_readers:
                 print("❌ No se encontraron lectores ACR122U conectados")
                 return False
@@ -73,12 +73,12 @@ class ACR122UReader:
                 if not self.connect_to_reader():
                     return None
 
-             APDU para obtener UID (ACR122U)
+            # APDU para obtener UID (ACR122U)
             get_uid = [0xFF, 0xCA, 0x00, 0x00, 0x00]
             data, sw1, sw2 = self.connection.transmit(get_uid)
 
-           if (sw1, sw2) == (0x90, 0x00):
-               uid_hex = self._normalize_uid(data)
+            if (sw1, sw2) == (0x90, 0x00):
+                uid_hex = self._normalize_uid(data)
                 return uid_hex
             else:
                 return None
@@ -104,18 +104,18 @@ class ACR122UReader:
             elapsed = int(time.time() - start_time)
             remaining = timeout - elapsed
             
-             Mostrar progreso cada 5 segundos
+            # Mostrar progreso cada 5 segundos
             if elapsed != last_progress and elapsed % 5 == 0:
                 print(f"⏰ Tiempo restante: {remaining} segundos...")
                 last_progress = elapsed
             
-             Intentar conectar si no hay conexión
+            # Intentar conectar si no hay conexión
             if not self.connection:
                 if not self.connect_to_reader():
                     time.sleep(0.5)
                     continue
 
-             Intentar leer tarjeta
+            # Intentar leer tarjeta
             uid = self.read_nfc_card()
             if uid:
                 user_name = self._get_user_name(uid)
@@ -129,7 +129,7 @@ class ACR122UReader:
         return None
 
     # ---------- monitoreo continuo ----------
-   def start_card_monitoring(self, card_removed_callback: Callable = None):
+    def start_card_monitoring(self, card_removed_callback: Callable = None):
         """Inicia el monitoreo continuo de la tarjeta"""
         if not self.connection:
             print("❌ No hay conexión al lector para monitorear")
@@ -146,10 +146,10 @@ class ACR122UReader:
             if not self.connection or not self.monitoring:
                 return False
 
-             Intentar leer la tarjeta actual
+            # Intentar leer la tarjeta actual
             current_uid = self.read_nfc_card()
             
-             Si no hay tarjeta o la tarjeta cambió
+            # Si no hay tarjeta o la tarjeta cambió
             if not current_uid or current_uid != self.current_card_uid:
                 if self.current_card_uid:  # Solo si había una tarjeta antes
                     print("⚠️  ¡TARJETA REMOVIDA!")
@@ -168,7 +168,7 @@ class ACR122UReader:
     def stop_monitoring(self):
         """Detiene el monitoreo de la tarjeta"""
         self.monitoring = False
-       self.current_card_uid = None
+        self.current_card_uid = None
         print("🔍 Monitoreo desactivado")
 
     # ---------- métodos adicionales ----------
@@ -181,12 +181,12 @@ class ACR122UReader:
         """Prueba de conexión básica"""
         if not self.reader:
             return False
-       try:
+        try:
             self.connection = self.reader.createConnection()
             self.connection.connect()
             return True
         except:
-           return False
+            return False
 
     def disconnect(self):
         try:
@@ -195,6 +195,4 @@ class ACR122UReader:
                 self.connection = None
                 self.stop_monitoring()
         except:
-
             pass
-

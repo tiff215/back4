@@ -119,7 +119,7 @@ class CompleteAuthClient:
         print("\n   ⚠️  ACCESO DENEGADO")
 
 if __name__ == "__main__":
-    client = CompleteAuthClient("http://localhost:8000", "ACR122U-STATION-01")
+    client = CompleteAuthClient("https://nfcblockchain.vercel.app/", "ACR122U-STATION-01")
     
     try:
         while True:

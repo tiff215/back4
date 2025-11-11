@@ -3,4 +3,5 @@ uvicorn==0.24.0
 requests==2.31.0
 web3==6.11.0
 pyscard==2.0.7
+gunicorn==21.2.0
 

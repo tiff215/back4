@@ -7,7 +7,7 @@ import hashlib
 
 # Quitamos el lector físico, Render no lo tiene
 # from acr122u_reader import ACR122UReader
-from database_manager import DatabaseManager  # Tu clase DatabaseManager
+from database import DatabaseManager  # Tu clase DatabaseManager
 from blockchain_simulated import BlockchainSimulated
 from session_manager import SessionManager
 
@@ -163,3 +163,4 @@ async def root():
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
+

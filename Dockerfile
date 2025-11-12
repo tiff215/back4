@@ -1,10 +1,9 @@
 # Usamos una imagen base oficial de Python 3.12
 FROM python:3.12-slim
 
-# Evitamos preguntas interactivas durante instalación
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Actualizamos paquetes y añadimos dependencias necesarias para pyscard y SWIG
+# Instalamos dependencias del sistema y swig (para pyscard)
 RUN apt-get update && apt-get install -y \
     build-essential \
     libpcsclite-dev \
@@ -14,18 +13,14 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Establecemos el directorio de trabajo
-WORKDIR /app
+# Instalamos setuptools para pkg_resources
+RUN pip install --upgrade pip setuptools wheel
 
-# Copiamos los archivos del proyecto
+WORKDIR /app
 COPY . /app
 
-# Instalamos pip y dependencias de Python
-RUN pip install --upgrade pip
+# Instalamos dependencias de Python
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Exponemos el puerto (cámbialo según tu app)
 EXPOSE 8000
-
-# Comando por defecto para correr tu app
 CMD ["python", "main.py"]

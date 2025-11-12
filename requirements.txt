@@ -4,3 +4,5 @@ requests==2.31.0
 web3==6.11.0
 pyscard==2.0.3
 flask
+setuptools<81
+

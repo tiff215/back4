@@ -3,7 +3,6 @@ from pydantic import BaseModel
 from datetime import datetime
 import uvicorn
 from typing import Optional
-import hashlib
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import DatabaseManager
@@ -97,12 +96,7 @@ async def register_admin_card(admin_data: AdminRegisterRequest):
 @app.post("/authenticate", response_model=AuthResponse)
 async def authenticate_user(auth_request: AuthRequest):
     try:
-        # -------------------- Logs para depuración --------------------
-        print("✅ Llega al endpoint /authenticate")
-        print("📥 Request recibido:", auth_request)
-
         nfc_user = database.get_user_by_nfc(auth_request.nfc_id)
-        print("🔎 Usuario NFC encontrado:", nfc_user)
 
         if not nfc_user:
             tx_hash = blockchain.record_auth_attempt(
@@ -110,7 +104,7 @@ async def authenticate_user(auth_request: AuthRequest):
                 auth_request.device_id, auth_request.nfc_id, False
             )
             database.log_auth_attempt(0, auth_request.nfc_id, auth_request.device_id, False, tx_hash, "Tarjeta no registrada")
-            return AuthResponse(success=False, message="Tarjeta NFC no registrada en el sistema", blockchain_tx=tx_hash)
+            return AuthResponse(success=False, message="Tarjeta NFC no registrada en el sistema", blockchain_tx=tx_hash, user=None)
 
         ad_user = active_directory_users.get(nfc_user.get('username', ''))
         if not ad_user or ad_user.get('pin') != auth_request.pin:
@@ -119,9 +113,9 @@ async def authenticate_user(auth_request: AuthRequest):
                 auth_request.device_id, auth_request.nfc_id, False
             )
             database.log_auth_attempt(nfc_user.get('id', 0), auth_request.nfc_id, auth_request.device_id, False, tx_hash, "PIN incorrecto")
-            return AuthResponse(success=False, message="Credenciales inválidas", blockchain_tx=tx_hash)
+            return AuthResponse(success=False, message="Credenciales inválidas", blockchain_tx=tx_hash, user=None)
 
-        # -------------------- Autenticación exitosa --------------------
+        # Autenticación exitosa
         tx_hash = blockchain.record_auth_attempt(
             nfc_user.get('username'), datetime.now().timestamp(),
             auth_request.device_id, auth_request.nfc_id, True
@@ -142,7 +136,7 @@ async def authenticate_user(auth_request: AuthRequest):
 
     except Exception as e:
         print("⚠️ Error interno en /authenticate:", str(e))
-        return AuthResponse(success=False, message=f"Error interno: {str(e)}", blockchain_tx=None)
+        return AuthResponse(success=False, message=f"Error interno: {str(e)}", blockchain_tx=None, user=None)
 
 # ------------------- SESIONES -------------------
 @app.post("/session/start")

@@ -4,7 +4,7 @@ FROM python:3.12-slim
 # Evitamos preguntas interactivas durante instalación
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Actualizamos paquetes y añadimos dependencias necesarias para pyscard
+# Actualizamos paquetes y añadimos dependencias necesarias para pyscard y SWIG
 RUN apt-get update && apt-get install -y \
     build-essential \
     libpcsclite-dev \
@@ -28,4 +28,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 EXPOSE 8000
 
 # Comando por defecto para correr tu app
-CMD ["python", "app.py"]
+CMD ["python", "main.py"]

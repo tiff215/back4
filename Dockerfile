@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y \
     libpcsclite-dev \
     pcscd \
     libusb-1.0-0-dev \
+    swig \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

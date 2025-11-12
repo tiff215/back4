@@ -159,6 +159,36 @@ async def start_session(session_request: SessionStartRequest):
         "security_level": nfc_user.get('security_level', 0)
     }, "message": "Sesión iniciada correctamente"}
 
+# ------------------- NUEVO ENDPOINT: VERIFICAR TARJETA -------------------
+@app.get("/nfc/check")
+async def check_nfc(nfc_id: str):
+    """
+    Verifica si una tarjeta NFC (por su UID) está registrada.
+    Retorna:
+      - registered: bool
+      - username, full_name, department, security_level (si está registrada)
+      - error (si hubo excepción)
+    """
+    try:
+        if not nfc_id:
+            return {"registered": False, "error": "nfc_id vacío"}
+
+        nfc_user = database.get_user_by_nfc(nfc_id)
+        if not nfc_user:
+            return {"registered": False}
+
+        ad_user = active_directory_users.get(nfc_user.get('username', ''))
+        return {
+            "registered": True,
+            "username": nfc_user.get('username', None),
+            "full_name": ad_user.get('full_name') if ad_user else None,
+            "department": ad_user.get('department') if ad_user else None,
+            "security_level": nfc_user.get('security_level', None)
+        }
+    except Exception as e:
+        print("⚠️ Error en /nfc/check:", e)
+        return {"registered": False, "error": str(e)}
+
 # ------------------- Health y root -------------------
 @app.get("/health")
 async def health_check():
@@ -176,6 +206,7 @@ async def root():
                           "admin": "/admin/register-card",
                           "users": "/user/{nfc_id}",
                           "logs": "/logs",
+                          "nfc_check": "/nfc/check",
                           "health": "/health"}}
 
 if __name__ == "__main__":

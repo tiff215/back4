@@ -1,22 +1,30 @@
-# Usamos Python 3.13 base
-FROM python:3.13-slim
+# Usamos una imagen base oficial de Python 3.12
+FROM python:3.12-slim
 
-# Instalar dependencias de sistema necesarias para pyscard
+# Evitamos preguntas interactivas durante instalación
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Actualizamos paquetes y añadimos dependencias necesarias para pyscard
 RUN apt-get update && apt-get install -y \
     build-essential \
     libpcsclite-dev \
-    swig \
+    pcscd \
+    libusb-1.0-0-dev \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Crear carpeta de la app
+# Establecemos el directorio de trabajo
 WORKDIR /app
 
-# Copiar todo tu proyecto dentro del contenedor
+# Copiamos los archivos del proyecto
 COPY . /app
 
-# Actualizar pip y luego instalar dependencias de Python
+# Instalamos pip y dependencias de Python
 RUN pip install --upgrade pip
-RUN pip install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Comando para arrancar la app
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "10000"]
+# Exponemos el puerto (cámbialo según tu app)
+EXPOSE 8000
+
+# Comando por defecto para correr tu app
+CMD ["python", "app.py"]

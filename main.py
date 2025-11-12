@@ -57,15 +57,8 @@ database = DatabaseManager()  # Base de datos local
 blockchain = BlockchainSimulated()
 session_manager = SessionManager()
 
-# Simulador de Active Directory
-active_directory_users = {
-    "analopez": {"pin": "1234", "full_name": "Ana Lopez", "department": "Inteligencia"},
-    "carlosruiz": {"pin": "5678", "full_name": "Carlos Ruiz", "department": "Analisis"},
-    "mariatorres": {"pin": "9012", "full_name": "Maria Torres", "department": "Operaciones"},
-    "aimee": {"pin": "0000", "full_name": "Aimee", "department": "Desarrollo"}  
-}
-
 # ------------------- ENDPOINTS -------------------
+
 @app.post("/admin/register-card")
 async def register_admin_card(admin_data: AdminRegisterRequest):
     try:
@@ -81,16 +74,10 @@ async def register_admin_card(admin_data: AdminRegisterRequest):
                 security_level=3, is_admin=True, pin="0000"
             )
 
-        # Actualizar simulador de AD
-        active_directory_users[admin_data.username.lower()] = {
-            "pin": "0000",
-            "full_name": full_name,
-            "department": "Administración"
-        }
-
         return {"success": True, "message": f"Tarjeta de administrador registrada para {full_name}"}
     except Exception as e:
         return {"success": False, "message": f"Error: {str(e)}"}
+
 
 # ------------------- AUTENTICACIÓN -------------------
 @app.post("/authenticate", response_model=AuthResponse)
@@ -106,14 +93,14 @@ async def authenticate_user(auth_request: AuthRequest):
             database.log_auth_attempt(0, auth_request.nfc_id, auth_request.device_id, False, tx_hash, "Tarjeta no registrada")
             return AuthResponse(success=False, message="Tarjeta NFC no registrada en el sistema", blockchain_tx=tx_hash, user=None)
 
-        ad_user = active_directory_users.get(nfc_user.get('username', ''))
-        if not ad_user or ad_user.get('pin') != auth_request.pin:
+        # Validar PIN con la base de datos
+        if nfc_user.get('pin') != auth_request.pin:
             tx_hash = blockchain.record_auth_attempt(
                 nfc_user.get('username', 'unknown'), datetime.now().timestamp(),
                 auth_request.device_id, auth_request.nfc_id, False
             )
             database.log_auth_attempt(nfc_user.get('id', 0), auth_request.nfc_id, auth_request.device_id, False, tx_hash, "PIN incorrecto")
-            return AuthResponse(success=False, message="Credenciales inválidas", blockchain_tx=tx_hash, user=None)
+            return AuthResponse(success=False, message="PIN incorrecto", blockchain_tx=tx_hash, user=None)
 
         # Autenticación exitosa
         tx_hash = blockchain.record_auth_attempt(
@@ -127,8 +114,8 @@ async def authenticate_user(auth_request: AuthRequest):
             message="Autenticación exitosa",
             user={
                 "username": nfc_user.get('username', 'No disponible'),
-                "full_name": ad_user.get('full_name', 'No disponible'),
-                "department": ad_user.get('department', 'No disponible'),
+                "full_name": nfc_user.get('full_name', 'No disponible'),
+                "department": nfc_user.get('department', 'No disponible'),
                 "security_level": nfc_user.get('security_level', 0)
             },
             blockchain_tx=tx_hash
@@ -138,6 +125,7 @@ async def authenticate_user(auth_request: AuthRequest):
         print("⚠️ Error interno en /authenticate:", str(e))
         return AuthResponse(success=False, message=f"Error interno: {str(e)}", blockchain_tx=None, user=None)
 
+
 # ------------------- SESIONES -------------------
 @app.post("/session/start")
 async def start_session(session_request: SessionStartRequest):
@@ -145,49 +133,29 @@ async def start_session(session_request: SessionStartRequest):
     if not nfc_user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
-    ad_user = active_directory_users.get(nfc_user.get('username', ''))
-    if not ad_user or ad_user.get('pin') != session_request.pin:
-        raise HTTPException(status_code=401, detail="Credenciales inválidas")
+    if nfc_user.get('pin') != session_request.pin:
+        raise HTTPException(status_code=401, detail="PIN incorrecto")
 
     session_token = session_manager.create_session(nfc_user.get('id', 0), session_request.device_id)
     session_manager.log_activity(session_token, "LOGIN", f"Inicio de sesión - {nfc_user.get('full_name', 'Desconocido')}")
 
     return {"success": True, "session_token": session_token, "user": {
         "username": nfc_user.get('username', 'No disponible'),
-        "full_name": ad_user.get('full_name', 'No disponible'),
-        "department": ad_user.get('department', 'No disponible'),
+        "full_name": nfc_user.get('full_name', 'No disponible'),
+        "department": nfc_user.get('department', 'No disponible'),
         "security_level": nfc_user.get('security_level', 0)
     }, "message": "Sesión iniciada correctamente"}
 
-# ------------------- NUEVO ENDPOINT: VERIFICAR TARJETA -------------------
-@app.get("/nfc/check")
-async def check_nfc(nfc_id: str):
-    """
-    Verifica si una tarjeta NFC (por su UID) está registrada.
-    Retorna:
-      - registered: bool
-      - username, full_name, department, security_level (si está registrada)
-      - error (si hubo excepción)
-    """
+
+# ------------------- LISTAR USUARIOS -------------------
+@app.get("/users")
+async def list_users():
     try:
-        if not nfc_id:
-            return {"registered": False, "error": "nfc_id vacío"}
-
-        nfc_user = database.get_user_by_nfc(nfc_id)
-        if not nfc_user:
-            return {"registered": False}
-
-        ad_user = active_directory_users.get(nfc_user.get('username', ''))
-        return {
-            "registered": True,
-            "username": nfc_user.get('username', None),
-            "full_name": ad_user.get('full_name') if ad_user else None,
-            "department": ad_user.get('department') if ad_user else None,
-            "security_level": nfc_user.get('security_level', None)
-        }
+        users = database.get_all_users()
+        return {"success": True, "users": users, "count": len(users)}
     except Exception as e:
-        print("⚠️ Error en /nfc/check:", e)
-        return {"registered": False, "error": str(e)}
+        return {"success": False, "message": f"Error obteniendo usuarios: {str(e)}"}
+
 
 # ------------------- Health y root -------------------
 @app.get("/health")
@@ -204,9 +172,8 @@ async def root():
             "endpoints": {"authentication": "/authenticate",
                           "sessions": "/session/start, /session/activity, /session/logout",
                           "admin": "/admin/register-card",
-                          "users": "/user/{nfc_id}",
+                          "users": "/users",
                           "logs": "/logs",
-                          "nfc_check": "/nfc/check",
                           "health": "/health"}}
 
 if __name__ == "__main__":

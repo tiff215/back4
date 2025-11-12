@@ -5,8 +5,9 @@ import uvicorn
 from typing import Optional
 import hashlib
 
-from acr122u_reader import ACR122UReader
-from database import DatabaseManager
+# Quitamos el lector físico, Render no lo tiene
+# from acr122u_reader import ACR122UReader
+from database_manager import DatabaseManager  # Tu clase DatabaseManager
 from blockchain_simulated import BlockchainSimulated
 from session_manager import SessionManager
 
@@ -44,9 +45,10 @@ class AdminRegisterRequest(BaseModel):
     full_name: str
 
 # ------------------- Inicialización -------------------
-nfc_reader = ACR122UReader()
-# Cambiamos la base de datos local por la URL remota
-database = DatabaseManager(remote_api_url="https://nfcblockchain.vercel.app/")
+# NFC físico omitido para Render
+# nfc_reader = ACR122UReader()
+
+database = DatabaseManager()  # Solo db_name, no remote_api_url
 blockchain = BlockchainSimulated()
 session_manager = SessionManager()
 
@@ -64,32 +66,22 @@ active_directory_users = {
 async def register_admin_card(admin_data: AdminRegisterRequest):
     """
     Registrar una nueva tarjeta NFC como administrador
-    usando la base de datos remota a través de DatabaseManager.
+    usando la base de datos local.
     """
     try:
-        admin_username = admin_data.username
-        admin_password = admin_data.password
         nfc_id = admin_data.nfc_id
         full_name = admin_data.full_name
 
-        # Verificar credenciales de admin remoto
-        admin = await database.get_admin_by_username(admin_username)
-        if not admin:
-            return {"success": False, "message": "Credenciales de administrador inválidas"}
-        
-        password_hash = hashlib.sha256(admin_password.encode()).hexdigest()
-        if admin['password_hash'] != password_hash:
-            return {"success": False, "message": "Contraseña incorrecta"}
-
-        # Registrar o actualizar usuario como admin
-        existing_user = await database.get_user_by_nfc(nfc_id)
+        # Verificar si usuario ya existe
+        existing_user = database.get_user_by_nfc(nfc_id)
         if existing_user:
-            await database.update_user_admin(nfc_id, full_name)
+            database.update_user_as_admin(nfc_id, full_name)
         else:
-            await database.insert_user_admin(nfc_id, full_name)
+            # Insertar usuario nuevo como admin
+            database.register_nfc_user_with_pin(nfc_id, admin_data.username, full_name, "Administración", security_level=3, is_admin=True, pin="0000")
 
         # Actualizar simulador de AD
-        active_directory_users[admin_username.lower()] = {
+        active_directory_users[admin_data.username.lower()] = {
             "pin": "0000",
             "full_name": full_name,
             "department": "Administración"
@@ -103,23 +95,23 @@ async def register_admin_card(admin_data: AdminRegisterRequest):
 @app.post("/authenticate", response_model=AuthResponse)
 async def authenticate_user(auth_request: AuthRequest):
     try:
-        nfc_user = await database.get_user_by_nfc(auth_request.nfc_id)
+        nfc_user = database.get_user_by_nfc(auth_request.nfc_id)
         if not nfc_user:
             tx_hash = blockchain.record_auth_attempt("unknown", datetime.now().timestamp(),
                                                      auth_request.device_id, auth_request.nfc_id, False)
-            await database.log_auth_attempt(0, auth_request.nfc_id, auth_request.device_id, False, tx_hash, "Tarjeta no registrada")
+            database.log_auth_attempt(0, auth_request.nfc_id, auth_request.device_id, False, tx_hash, "Tarjeta no registrada")
             return AuthResponse(success=False, message="Tarjeta NFC no registrada en el sistema", blockchain_tx=tx_hash)
 
         ad_user = active_directory_users.get(nfc_user['username'])
         if not ad_user or ad_user['pin'] != auth_request.pin:
             tx_hash = blockchain.record_auth_attempt(nfc_user['username'], datetime.now().timestamp(),
                                                      auth_request.device_id, auth_request.nfc_id, False)
-            await database.log_auth_attempt(nfc_user['id'], auth_request.nfc_id, auth_request.device_id, False, tx_hash, "PIN incorrecto")
+            database.log_auth_attempt(nfc_user['id'], auth_request.nfc_id, auth_request.device_id, False, tx_hash, "PIN incorrecto")
             return AuthResponse(success=False, message="Credenciales inválidas", blockchain_tx=tx_hash)
 
         tx_hash = blockchain.record_auth_attempt(nfc_user['username'], datetime.now().timestamp(),
                                                  auth_request.device_id, auth_request.nfc_id, True)
-        await database.log_auth_attempt(nfc_user['id'], auth_request.nfc_id, auth_request.device_id, True, tx_hash)
+        database.log_auth_attempt(nfc_user['id'], auth_request.nfc_id, auth_request.device_id, True, tx_hash)
 
         return AuthResponse(
             success=True,
@@ -135,7 +127,7 @@ async def authenticate_user(auth_request: AuthRequest):
 # ------------------- Sesiones -------------------
 @app.post("/session/start")
 async def start_session(session_request: SessionStartRequest):
-    nfc_user = await database.get_user_by_nfc(session_request.nfc_id)
+    nfc_user = database.get_user_by_nfc(session_request.nfc_id)
     if not nfc_user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
@@ -153,14 +145,21 @@ async def start_session(session_request: SessionStartRequest):
 # ------------------- Health y root -------------------
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "nfc_reader": "connected" if nfc_reader.reader else "disconnected",
-            "database": "connected", "blockchain": "simulated", "session_manager": "active"}
+    return {"status": "healthy",
+            "nfc_reader": "simulated",
+            "database": "connected",
+            "blockchain": "simulated",
+            "session_manager": "active"}
 
 @app.get("/")
 async def root():
     return {"message": "Sistema NFC + Blockchain", "version": "1.0",
-            "endpoints": {"authentication": "/authenticate", "sessions": "/session/start, /session/activity, /session/logout",
-                          "admin": "/admin/register-card", "users": "/user/{nfc_id}", "logs": "/logs", "health": "/health"}}
+            "endpoints": {"authentication": "/authenticate",
+                          "sessions": "/session/start, /session/activity, /session/logout",
+                          "admin": "/admin/register-card",
+                          "users": "/user/{nfc_id}",
+                          "logs": "/logs",
+                          "health": "/health"}}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

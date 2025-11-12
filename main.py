@@ -93,10 +93,17 @@ async def register_admin_card(admin_data: AdminRegisterRequest):
     except Exception as e:
         return {"success": False, "message": f"Error: {str(e)}"}
 
+# ------------------- AUTENTICACIÓN -------------------
 @app.post("/authenticate", response_model=AuthResponse)
 async def authenticate_user(auth_request: AuthRequest):
     try:
+        # -------------------- Logs para depuración --------------------
+        print("✅ Llega al endpoint /authenticate")
+        print("📥 Request recibido:", auth_request)
+
         nfc_user = database.get_user_by_nfc(auth_request.nfc_id)
+        print("🔎 Usuario NFC encontrado:", nfc_user)
+
         if not nfc_user:
             tx_hash = blockchain.record_auth_attempt(
                 "unknown", datetime.now().timestamp(),
@@ -105,51 +112,57 @@ async def authenticate_user(auth_request: AuthRequest):
             database.log_auth_attempt(0, auth_request.nfc_id, auth_request.device_id, False, tx_hash, "Tarjeta no registrada")
             return AuthResponse(success=False, message="Tarjeta NFC no registrada en el sistema", blockchain_tx=tx_hash)
 
-        ad_user = active_directory_users.get(nfc_user['username'])
-        if not ad_user or ad_user['pin'] != auth_request.pin:
+        ad_user = active_directory_users.get(nfc_user.get('username', ''))
+        if not ad_user or ad_user.get('pin') != auth_request.pin:
             tx_hash = blockchain.record_auth_attempt(
-                nfc_user['username'], datetime.now().timestamp(),
+                nfc_user.get('username', 'unknown'), datetime.now().timestamp(),
                 auth_request.device_id, auth_request.nfc_id, False
             )
-            database.log_auth_attempt(nfc_user['id'], auth_request.nfc_id, auth_request.device_id, False, tx_hash, "PIN incorrecto")
+            database.log_auth_attempt(nfc_user.get('id', 0), auth_request.nfc_id, auth_request.device_id, False, tx_hash, "PIN incorrecto")
             return AuthResponse(success=False, message="Credenciales inválidas", blockchain_tx=tx_hash)
 
+        # -------------------- Autenticación exitosa --------------------
         tx_hash = blockchain.record_auth_attempt(
-            nfc_user['username'], datetime.now().timestamp(),
+            nfc_user.get('username'), datetime.now().timestamp(),
             auth_request.device_id, auth_request.nfc_id, True
         )
-        database.log_auth_attempt(nfc_user['id'], auth_request.nfc_id, auth_request.device_id, True, tx_hash)
+        database.log_auth_attempt(nfc_user.get('id', 0), auth_request.nfc_id, auth_request.device_id, True, tx_hash)
 
         return AuthResponse(
             success=True,
             message="Autenticación exitosa",
-            user={"username": nfc_user['username'], "full_name": ad_user['full_name'],
-                  "department": ad_user['department'], "security_level": nfc_user['security_level']},
+            user={
+                "username": nfc_user.get('username', 'No disponible'),
+                "full_name": ad_user.get('full_name', 'No disponible'),
+                "department": ad_user.get('department', 'No disponible'),
+                "security_level": nfc_user.get('security_level', 0)
+            },
             blockchain_tx=tx_hash
         )
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+        print("⚠️ Error interno en /authenticate:", str(e))
+        return AuthResponse(success=False, message=f"Error interno: {str(e)}", blockchain_tx=None)
 
-# ------------------- Sesiones -------------------
+# ------------------- SESIONES -------------------
 @app.post("/session/start")
 async def start_session(session_request: SessionStartRequest):
     nfc_user = database.get_user_by_nfc(session_request.nfc_id)
     if not nfc_user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
-    ad_user = active_directory_users.get(nfc_user['username'])
-    if not ad_user or ad_user['pin'] != session_request.pin:
+    ad_user = active_directory_users.get(nfc_user.get('username', ''))
+    if not ad_user or ad_user.get('pin') != session_request.pin:
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
 
-    session_token = session_manager.create_session(nfc_user['id'], session_request.device_id)
-    session_manager.log_activity(session_token, "LOGIN", f"Inicio de sesión - {nfc_user['full_name']}")
+    session_token = session_manager.create_session(nfc_user.get('id', 0), session_request.device_id)
+    session_manager.log_activity(session_token, "LOGIN", f"Inicio de sesión - {nfc_user.get('full_name', 'Desconocido')}")
 
     return {"success": True, "session_token": session_token, "user": {
-        "username": nfc_user['username'],
-        "full_name": ad_user['full_name'],
-        "department": ad_user['department'],
-        "security_level": nfc_user['security_level']
+        "username": nfc_user.get('username', 'No disponible'),
+        "full_name": ad_user.get('full_name', 'No disponible'),
+        "department": ad_user.get('department', 'No disponible'),
+        "security_level": nfc_user.get('security_level', 0)
     }, "message": "Sesión iniciada correctamente"}
 
 # ------------------- Health y root -------------------
